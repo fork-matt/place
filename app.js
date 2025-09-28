@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-mongoose.promise = global.Promise;
+mongoose.Promise = global.Promise;
 const recaptcha = require("express-recaptcha");
 const readline = require("readline").createInterface({input: process.stdin, output: process.stdout});
 const util = require("util");
@@ -17,6 +17,28 @@ const ChangelogManager = require("./util/ChangelogManager");
 const User = require("./models/user");
 const fs = require("fs");
 const path = require("path");
+
+const loadLocalEnv = () => {
+    if (process.env.NODE_ENV === "production" || process.env.SKIP_LOCAL_ENV === "true" || process.env.SKIP_LOCAL_ENV === "1") return;
+    const envPath = path.resolve(__dirname, ".env");
+    if (!fs.existsSync(envPath)) return;
+    const envContents = fs.readFileSync(envPath, "utf8");
+    envContents.split(/\r?\n/).forEach((line) => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) return;
+        const delimiterIndex = line.indexOf("=");
+        if (delimiterIndex === -1) return;
+        const key = line.slice(0, delimiterIndex).trim();
+        if (!key) return;
+        let value = line.slice(delimiterIndex + 1).trim();
+        if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
+            value = value.slice(1, -1);
+        }
+        value = value.replace(/\\n/g, "\n");
+        if (typeof process.env[key] === "undefined") process.env[key] = value;
+    });
+};
+loadLocalEnv();
 
 var app = {};
 
@@ -61,7 +83,7 @@ if (!fs.existsSync(app.dataFolder)) fs.mkdirSync(app.dataFolder);
 
 // Get image handler
 app.paintingManager = PaintingManager(app);
-app.logger.info('Startup', "Loading image from the database…");
+app.logger.info('Startup', "Loading image from the database...");
 app.paintingManager.loadImageFromDatabase().then((image) => {
     app.paintingManager.startTimer();
     app.logger.info('Startup', "Successfully loaded image from database.");
@@ -101,14 +123,15 @@ app.recreateServer = () => {
 }
 app.recreateServer();
 
-mongoose.connect(process.env.DATABASE || app.config.database);
+const mongooseConnectionOptions = { useNewUrlParser: true, useUnifiedTopology: true };
+mongoose.connect(process.env.DATABASE || app.config.database, mongooseConnectionOptions);
 
 const handlePendingDeletions = () => {
     setInterval(() => {
         const now = new Date();
-        User.remove({ deletionDate: { $lte: now } }, function(err, result) {
+        User.deleteMany({ deletionDate: { $lte: now } }, function(err, result) {
             if (err) { console.error(err); return }
-            if (result.n) app.logger.log('Deleter', `Deleted ${result.n} users.`);
+            if (result.deletedCount) app.logger.log('Deleter', 'Deleted ' + result.deletedCount + ' users.');
         });
     }, 30 * Math.pow(10, 3));
 }
@@ -123,7 +146,7 @@ app.javascriptProcessor.processJavaScript();
 
 app.stopServer = () => {
     if(app.server.listening) {
-        app.logger.log('Shutdown', "Closing server…")
+        app.logger.log('Shutdown', "Closing server...")
         app.server.close();
         setImmediate(function() { app.server.emit("close"); });
     }
@@ -166,3 +189,5 @@ readline.on('line', i => {
         console.log(err.stack)
     }
 })
+
+

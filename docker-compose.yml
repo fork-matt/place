@@ -9,15 +9,24 @@ services:
       - "db"
     environment:
       NODE_ENV: "production"
-      DATABASE: "mongodb://db/place"
+      DATABASE_HOST: "db"
+      DATABASE_PORT: "27017"
+      DATABASE_NAME: "place"
+      DATABASE_USER: "root"
+      DATABASE_PASSWORD: "root"
+      DATABASE_AUTH_SOURCE: "admin"
       PORT: 3000
       ONLY_LISTEN_LOCAL: "false"
   db:
-    image: mongo
+    image: mongo:latest
     restart: always
     volumes:
       - mongo-volume:/data/db
-    expose:
-      - "27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: root
+      MONGO_INITDB_DATABASE: place
+    ports:
+      - "27017:27017"
 volumes:
   mongo-volume:

@@ -1,14 +1,16 @@
 const {EventEmitter} = require("events");
+const WebSocket = require("ws");
+
 const badRequest = (error) => ["bad_request", {success: false, error: error ? {message: error} : undefined}];
 exports.PlaceSocket = class PlaceSocket extends EventEmitter {
     /**
-     * @param {ws} socket The socket
+     * @param {WebSocket} socket The socket
      * @param {{activityThresholdMilliseconds: number}} options the options object
      */
     constructor(socket, options) {
         super();
         /**
-         * @type {ws}
+         * @type {WebSocket}
          */
         this.socket = socket;
         /**
@@ -27,8 +29,21 @@ exports.PlaceSocket = class PlaceSocket extends EventEmitter {
             warned: false,
         }
 
-        socket.onmessage = event => {
-            let {data} = event;
+        this._hasClosed = false;
+        const cleanup = () => {
+            if (this._hasClosed) {
+                return;
+            }
+            this._hasClosed = true;
+            this._closeFunction();
+        };
+        this._cleanup = cleanup;
+
+        socket.on("message", rawMessage => {
+            let data = rawMessage;
+            if (Buffer.isBuffer(data)) {
+                data = data.toString();
+            }
             try {
                 data = JSON.parse(data);
             } catch (e) {
@@ -55,14 +70,14 @@ exports.PlaceSocket = class PlaceSocket extends EventEmitter {
             }
             this.stat();
             this.emit(r, d);
-        }
+        });
 
         this.dispatch("hello", {options: {activityTimeout: options.activityThresholdMilliseconds}});
 
         this.on("activity", () => this.resetTimeoutStats());
 
-        socket.onerror = () => this._closeFunction();
-        socket.onclose = () => this._closeFunction();
+        socket.on("error", cleanup);
+        socket.on("close", cleanup);
     }
 
     /**
@@ -73,6 +88,10 @@ exports.PlaceSocket = class PlaceSocket extends EventEmitter {
      */
     dispatch(event, payload) {
         return new Promise((resolve, reject) => {
+            if (this.socket.readyState !== WebSocket.OPEN) {
+                resolve();
+                return;
+            }
             this.socket.send(JSON.stringify({e: event, d: payload}), (e) => e ? reject(e) : resolve());
         });
     }
@@ -84,9 +103,15 @@ exports.PlaceSocket = class PlaceSocket extends EventEmitter {
      * @param {any} payload the closing payload name
      */
     async close(event = undefined, payload = undefined) {
-        await this.dispatch(event, payload);
+        try {
+            if (event) {
+                await this.dispatch(event, payload);
+            }
+        } catch (e) {
+            // ignore errors when the socket is already closed
+        }
         this.socket.close();
-        this._closeFunction();
+        this._cleanup();
     }
 
     /**
@@ -95,7 +120,7 @@ exports.PlaceSocket = class PlaceSocket extends EventEmitter {
      * @type {string}
      */
     get ip() {
-        const ip = this.socket._socket.remoteAddress;
+        const ip = this.socket._socket && this.socket._socket.remoteAddress;
         if (typeof ip !== "string") {
             return undefined;
         }
@@ -108,7 +133,7 @@ exports.PlaceSocket = class PlaceSocket extends EventEmitter {
      * @type {string}
      */
     get open() {
-        return this.socket.readyState === this.socket.OPEN;
+        return this.socket.readyState === WebSocket.OPEN;
     }
 
     /**

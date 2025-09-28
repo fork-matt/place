@@ -1,4 +1,4 @@
-FROM node:carbon
+FROM node:18-bullseye
 LABEL maintainer="applebetas@dynastic.co"
 
 # Create app directory

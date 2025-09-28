@@ -1,4 +1,4 @@
-const ws = require("uws");
+const WebSocket = require("ws");
 const Pixel = require("../models/pixel");
 const {SocketController} = require("./Sockets/SocketController");
 
@@ -8,7 +8,7 @@ function WebsocketServer(app, httpServer) {
     class SocketServer {
 
         constructor() {
-            this.server = new ws.Server({server: httpServer});
+            this.server = new WebSocket.Server({server: httpServer});
             setInterval(() => this.checkUserCount(), 1000);
 
             this.socketController = new SocketController();

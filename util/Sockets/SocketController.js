@@ -25,7 +25,7 @@ exports.SocketController = class SocketController {
     /**
      * Registers a socket by its IP address
      * 
-     * @param {ws} socket The websocket to register
+     * @param {WebSocket} socket The websocket to register
      */
     register(socket) {
         const placeSocket = new PlaceSocket(socket, this.options);
@@ -175,7 +175,11 @@ exports.SocketController = class SocketController {
         this.sockets.forEach((sockets, key) => {
             if (sockets.length > hardSocketLimit) {
                 sockets.slice(hardSocketLimit - 1).forEach(socket => {
-                    socket.socket.close(0, JSON.stringify(maxSocketLimit));
+                    try {
+                        socket.socket.close(4000, JSON.stringify(maxSocketLimit));
+                    } catch (err) {
+                        // ignore close errors
+                    }
                 });
                 this.sockets.set(key, sockets.filter(socket => socket.open));
             }
